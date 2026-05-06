@@ -1,0 +1,5 @@
+# Sample CODEOWNERS used by test_linter.sh to exercise the optional
+# --codeowners check. Last-match-wins semantics.
+
+* @platform-team
+/policy/exceptions.yaml @security-team alice@example.com

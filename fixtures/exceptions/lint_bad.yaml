@@ -1,0 +1,24 @@
+# Intentionally malformed exception entries. test_linter.sh asserts that the
+# linter rejects each violation type below. These dates are fixed so the
+# violations remain valid forever (each entry is bad for a structural reason
+# the linter must catch).
+
+- rule_id: P11
+  resource: "*"
+  reason: missing approved field
+  approver: alice@example.com
+  expires: "2030-01-01"
+
+- rule_id: P12
+  resource: "*"
+  reason: already expired (lapsed long ago)
+  approver: bob@example.com
+  approved: "2025-01-01"
+  expires: "2025-06-01"
+
+- rule_id: P13
+  resource: "*"
+  reason: too far in the future (exceeds default 90-day window)
+  approver: carol@example.com
+  approved: "2026-01-01"
+  expires: "2030-12-31"
