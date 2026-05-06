@@ -27,9 +27,10 @@ env/
 bundle.resolved.json
 bundle.deployed.json
 
-# Reporter outputs (Markdown / JUnit / JSON).
+# Reporter outputs (Markdown / JUnit / JSON / SARIF).
 report.md
 report.json
+report.sarif
 conftest-report.xml
 
 # --- Bundle variable overrides ---
