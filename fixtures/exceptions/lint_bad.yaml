@@ -7,7 +7,7 @@
   resource: "*"
   reason: missing approved field
   approver: alice@example.com
-  expires: "2030-01-01"
+  expires: "2099-01-01"
 
 - rule_id: P12
   resource: "*"
@@ -21,4 +21,4 @@
   reason: too far in the future (exceeds default 90-day window)
   approver: carol@example.com
   approved: "2026-01-01"
-  expires: "2030-12-31"
+  expires: "2099-12-31"
