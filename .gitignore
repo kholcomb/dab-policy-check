@@ -1,0 +1,58 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# --- IDE / editor ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- macOS ---
+.DS_Store
+
+# --- Databricks CLI / bundle artifacts ---
+# Local CLI cache and per-target state.
+.databricks/
+
+# Resolved-bundle output from `bundle validate -o json`.
+# Contains substituted values (workspace hosts, resolved IDs) — should not be
+# committed; regenerated in CI.
+bundle.resolved.json
+bundle.deployed.json
+
+# Reporter outputs (Markdown / JUnit / JSON).
+report.md
+report.json
+conftest-report.xml
+
+# --- Bundle variable overrides ---
+# Never commit. Holds local-only or environment-specific values, often credentials.
+# Excluding here is defense in depth alongside `sync.exclude` in databricks.yml (P13).
+variable-overrides.json
+.databricks/bundle/*/variable-overrides.json
+
+# --- Credential surfaces (P12 / P13) ---
+# These should never enter the repo regardless of context.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+credentials.json
+service-account-*.json
+
+# --- Build outputs ---
+build/
+dist/
+*.whl
+*.tar.gz
+
+# --- OPA / Conftest local caches ---
+.opa-cache/

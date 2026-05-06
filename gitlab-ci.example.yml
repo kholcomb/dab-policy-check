@@ -27,7 +27,7 @@ default:
       - .databricks/
   before_script:
     - apt-get update -qq && apt-get install -qq -y --no-install-recommends curl ca-certificates
-    - pip install --quiet "databricks-cli>=0.218.0" "databricks-sdk" "pip-audit"
+    - pip install --quiet "databricks-cli>=0.218.0" "databricks-sdk" "pip-audit" "pyyaml"
     - curl -sSL "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" | tar -xz -C /usr/local/bin conftest
   interruptible: true
 
@@ -44,17 +44,28 @@ bundle:validate:
       - bundle.resolved.json
     expire_in: 1 week
 
-# ---------- SECURITY: P2-P16 ----------
+# ---------- SECURITY: P2-P16 (rich report) ----------
 policy:conftest:
   stage: security
   needs: [bundle:validate]
   script:
-    - conftest test --policy policy/ --all-namespaces --output=stdout bundle.resolved.json
-    - conftest test --policy policy/ --all-namespaces --output=junit bundle.resolved.json > conftest-report.xml || true
+    - python scripts/conftest_report.py
+        --policy policy/
+        --catalog policy/dab.catalog.yaml
+        --bundle bundle.resolved.json
+        --markdown report.md
+        --junit conftest-report.xml
+        --json report.json
+        --fail-on high
+    - cat report.md
   artifacts:
     when: always
+    paths:
+      - report.md
+      - report.json
     reports:
       junit: conftest-report.xml
+    expire_in: 1 week
 
 # ---------- SECURITY: source-tree variants of P12, P14 ----------
 policy:source-grep:

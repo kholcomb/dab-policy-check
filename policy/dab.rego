@@ -55,15 +55,17 @@ deny contains msg if {
 
 deny contains msg if {
 	some name
+	target := input.targets[name]
 	is_prod(name)
-	not input.targets[name].run_as.service_principal_name
+	not target.run_as.service_principal_name
 	msg := sprintf("[P3/High] prod target must set run_as.service_principal_name (resource: targets.%s.run_as)", [name])
 }
 
 deny contains msg if {
 	some name
+	target := input.targets[name]
 	is_prod(name)
-	input.targets[name].run_as.user_name
+	target.run_as.user_name
 	msg := sprintf("[P3/High] prod target must NOT set run_as.user_name (resource: targets.%s.run_as)", [name])
 }
 
@@ -71,22 +73,25 @@ deny contains msg if {
 
 deny contains msg if {
 	some name
+	target := input.targets[name]
 	is_prod(name)
-	not input.targets[name].workspace.root_path
+	not target.workspace.root_path
 	msg := sprintf("[P4/High] prod workspace.root_path must be set (resource: targets.%s.workspace)", [name])
 }
 
 deny contains msg if {
 	some name
+	target := input.targets[name]
 	is_prod(name)
-	regex.match(`^/Workspace/Users/`, input.targets[name].workspace.root_path)
+	regex.match(`^/Workspace/Users/`, target.workspace.root_path)
 	msg := sprintf("[P4/High] prod workspace.root_path must not start with /Workspace/Users/ (resource: targets.%s.workspace.root_path)", [name])
 }
 
 deny contains msg if {
 	some name
+	target := input.targets[name]
 	is_prod(name)
-	contains(input.targets[name].workspace.root_path, "${workspace.current_user")
+	contains(target.workspace.root_path, "${workspace.current_user")
 	msg := sprintf("[P4/High] prod workspace.root_path must not interpolate ${workspace.current_user} (resource: targets.%s.workspace.root_path)", [name])
 }
 
@@ -94,8 +99,9 @@ deny contains msg if {
 
 deny contains msg if {
 	some name
+	target := input.targets[name]
 	is_prod(name)
-	not input.targets[name].git.branch
+	not target.git.branch
 	not input.bundle.git.branch
 	msg := sprintf("[P5/High] prod target must pin git.branch at target or bundle level (resource: targets.%s.git)", [name])
 }

@@ -1,0 +1,311 @@
+# Rule catalog for DAB pre-deploy policy (policy/dab.rego).
+# Keyed by rule ID emitted in deny messages: [P<n>/<sev>] ... (resource: ...).
+# Used by scripts/conftest_report.py to render rich reports.
+#
+# Each entry:
+#   title       short human-readable name
+#   severity    Critical | High | Medium | Low (must match the Rego deny prefix)
+#   why         what shipping this misconfiguration costs
+#   fix         concrete remediation, copy-pasteable where possible
+#   references  doc anchors and external links
+#
+# Adding a rule? Add a catalog entry. The reporter fails CI if it sees a finding
+# for a rule_id with no entry here.
+
+P2:
+  title: Prod target mode is "production"
+  severity: High
+  why: |
+    Without `mode: production`, the deploy bypasses Databricks' production
+    guardrails: schedules silently pause; Lakeflow pipelines mark themselves
+    as development; the deployment lock is disabled, allowing concurrent
+    deploys to race; cluster overrides via the CLI are permitted. The result
+    is a production deploy with development semantics, typically discovered
+    only when a scheduled job fails to run.
+  fix: |
+    Add `mode: production` under the prod target:
+
+      targets:
+        prod:
+          mode: production
+
+  references:
+    - DAB.md#6-targets--deployment-modes
+    - https://docs.databricks.com/aws/en/dev-tools/bundles/deployment-modes
+
+P3:
+  title: Prod run_as is a service principal
+  severity: High
+  why: |
+    Running prod jobs as a human identity ties production execution to one
+    person's lifecycle. When that user offboards, every job that runs as
+    them fails. The user's full set of entitlements becomes the blast radius
+    for any compromised job. Audit becomes harder because human and workload
+    activity is conflated under the same identity.
+  fix: |
+    Set `run_as.service_principal_name` under the prod target and remove any
+    `run_as.user_name`. Reference the SP via a variable, not a hard-coded ID:
+
+      targets:
+        prod:
+          run_as:
+            service_principal_name: ${var.prod_sp}
+
+  references:
+    - DAB.md#8-authentication
+    - https://docs.databricks.com/aws/en/dev-tools/bundles/run-as
+
+P4:
+  title: Prod root_path not user-bound
+  severity: High
+  why: |
+    When prod artifacts live under /Workspace/Users/<email>/, prod state is
+    owned by one person. Their offboarding deletes prod state. Multiple
+    deployers collide on the same path. The path itself leaks who deployed
+    last.
+  fix: |
+    Set a non-user-bound root_path on the prod target:
+
+      targets:
+        prod:
+          workspace:
+            root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}
+
+  references:
+    - DAB.md#9-secure-by-default-settings
+
+P5:
+  title: Prod git-branch enforcement
+  severity: High
+  why: |
+    Without `git.branch`, any branch — including unreviewed feature branches
+    and personal forks — can be deployed straight to prod. The code-review
+    gate becomes voluntary: anyone with deploy access can bypass review by
+    deploying from a different branch.
+  fix: |
+    Pin the branch on the prod target (or at the bundle root):
+
+      targets:
+        prod:
+          git:
+            branch: main
+
+  references:
+    - DAB.md#9-secure-by-default-settings
+
+P6:
+  title: CLI version pinned
+  severity: Low
+  why: |
+    Without a pinned CLI version, contributors and CI may run different
+    `databricks` versions. Different versions can produce different resolved
+    bundles for the same source; deploys succeed locally and fail in CI, or
+    vice versa, with no clear cause.
+  fix: |
+    Pin the CLI version at the bundle root. 0.218.0 is the practical floor
+    for DAB support:
+
+      bundle:
+        databricks_cli_version: ">= 0.218.0"
+
+  references:
+    - DAB.md#1-what-a-dab-is
+
+P7:
+  title: No permissions overlap
+  severity: High
+  why: |
+    Databricks docs explicitly forbid the same identity appearing in both
+    top-level and resource-level permissions. Observed behavior is either
+    deploy failure or silent shadowing where the broader permission wins.
+    Either way, your authorization state cannot be reasoned about from the
+    source.
+  fix: |
+    Choose one location per identity:
+      - top-level for org-wide grants (e.g., admin groups)
+      - resource-level for per-resource grants
+    Remove duplicates. If you genuinely need different levels for the same
+    identity at different scopes, restructure the grants — this rule will
+    keep blocking until the conflict is resolved.
+  references:
+    - DAB.md#7-permissions
+    - https://docs.databricks.com/aws/en/dev-tools/bundles/permissions
+
+P8:
+  title: No CAN_MANAGE / IS_OWNER to broad groups
+  severity: Critical
+  why: |
+    Granting CAN_MANAGE or IS_OWNER to a broad group like `users` or
+    `account users` means every account user can edit, run, or delete the
+    resource. The blast radius for any insider mistake or compromised
+    account becomes the entire user population.
+  fix: |
+    Replace the broad-group grant with a narrow, named group (e.g.,
+    `data-engineering-leads`, `platform-admins`). Use CAN_VIEW or CAN_RUN
+    for broad audiences; reserve CAN_MANAGE / IS_OWNER for small admin
+    groups.
+
+      permissions:
+        - group_name: platform-admins
+          level: CAN_MANAGE
+        - group_name: users
+          level: CAN_VIEW
+
+  references:
+    - DAB.md#7-permissions
+
+P9:
+  title: Cluster security mode is UC-compatible
+  severity: High
+  why: |
+    Legacy modes (NONE, LEGACY_*) bypass Unity Catalog enforcement. Row- and
+    column-level security and credential passthrough do not apply. Any user
+    attached to the cluster can read everything the cluster identity can
+    read.
+  fix: |
+    Set `data_security_mode` to USER_ISOLATION (shared cluster) or
+    SINGLE_USER (cluster dedicated to one identity):
+
+      new_cluster:
+        data_security_mode: USER_ISOLATION
+
+  references:
+    - https://docs.databricks.com/aws/en/compute/configure#access-modes
+
+P10:
+  title: Init scripts only from workspace or volumes
+  severity: Critical
+  why: |
+    DBFS is unauthenticated workspace storage — any workspace user can
+    overwrite an init script there and gain code execution as root on every
+    cluster that runs it. Cloud-storage paths (s3:, abfss:, gcs:) are only
+    as secure as the bucket's IAM. Workspace files and Unity Catalog Volumes
+    enforce per-object permissions.
+  fix: |
+    Move the init script into a workspace path or a UC Volume:
+
+      init_scripts:
+        - workspace:
+            destination: /Workspace/Shared/.bundle/${bundle.name}/init/harden.sh
+        # or
+        - volumes:
+            destination: /Volumes/${var.catalog}/ops/init/harden.sh
+
+  references:
+    - https://docs.databricks.com/aws/en/init-scripts/
+
+P11:
+  title: Library versions exactly pinned
+  severity: High
+  why: |
+    Floating versions (no `==`, wildcards, ranges) allow a malicious upstream
+    release — typosquat, compromised maintainer, registry breach — to land
+    in production silently between deploys. Version pinning is the supply-
+    chain seatbelt.
+  fix: |
+    PyPI: pin with `==N.N.N`, no wildcards or comparison operators.
+      libraries:
+        - pypi:
+            package: requests==2.32.3
+
+    Maven: full `group:artifact:version`, no range syntax.
+      libraries:
+        - maven:
+            coordinates: org.apache.commons:commons-lang3:3.14.0
+
+  references:
+    - https://peps.python.org/pep-0440/
+
+P12:
+  title: No credentials in variable defaults
+  severity: Critical
+  why: |
+    A credential committed to git history cannot be revoked by deletion — it
+    is already exfiltrated. Anyone with repo read access (including past
+    employees, CI logs, PR diffs) can use it. Bundle YAML is also surfaced
+    in `databricks bundle validate -o json` output, which CI typically
+    archives as an artifact.
+  fix: |
+    1. Rotate the leaked credential immediately.
+    2. Remove the default. Reference secrets via `{{secrets/<scope>/<key>}}`
+       in resource fields. For credentials needed at deploy time, use the
+       `BUNDLE_VAR_<name>` environment variable or a gitignored
+       variable-overrides.json.
+  references:
+    - DAB.md#9-secure-by-default-settings
+
+P13:
+  title: sync.exclude covers credential surfaces
+  severity: High
+  why: |
+    Without these patterns in `sync.exclude`, `databricks bundle deploy`
+    uploads any matching files into the workspace, where they are visible
+    to every workspace user with file read. Common offenders: `.env` files,
+    private keys (.pem, .key, .pfx), and `variable-overrides.json` — which
+    is exactly the place a real secret would be placed.
+  fix: |
+    Add the missing patterns to `sync.exclude`:
+
+      sync:
+        exclude:
+          - .env
+          - "*.pem"
+          - "*.key"
+          - "*.pfx"
+          - variable-overrides.json
+
+  references:
+    - DAB.md#9-secure-by-default-settings
+
+P15:
+  title: Prod resources have explicit ownership
+  severity: Medium
+  why: |
+    When the deploying user offboards, resources without explicit ownership
+    become orphans — no one can modify, repair, or destroy them. Effectively
+    a denial of service for ops. Explicit IS_OWNER + CAN_MANAGE eliminates
+    the dependency on the original deployer.
+  fix: |
+    Add to each prod job/pipeline `permissions:` an IS_OWNER entry at the
+    resource level (top-level cannot grant IS_OWNER), plus a CAN_MANAGE at
+    the resource, target, or top level:
+
+      permissions:
+        - service_principal_name: ${var.prod_sp}
+          level: IS_OWNER
+        - group_name: data-engineering-leads
+          level: CAN_MANAGE
+
+  references:
+    - DAB.md#7-permissions
+
+P16:
+  title: Model serving has rate limits and AI gateway
+  severity: High
+  why: |
+    An unmetered inference endpoint has no upper bound on cost (a single
+    buggy caller can run six-figure bills overnight), no abuse throttling,
+    no request audit, and no PII guardrail. Once the endpoint is reachable,
+    the abuse vector persists until the endpoint is torn down.
+  fix: |
+    Add `rate_limits` and `ai_gateway` to the endpoint:
+
+      rate_limits:
+        - calls: 60
+          renewal_period: minute
+      ai_gateway:
+        usage_tracking_config:
+          enabled: true
+        inference_table_config:
+          enabled: true
+          catalog_name: ${var.catalog}
+          schema_name: ml_audit
+          table_name_prefix: <endpoint_name>
+        guardrails:
+          input:
+            safety: true
+            pii:
+              behavior: BLOCK
+
+  references:
+    - https://docs.databricks.com/aws/en/machine-learning/model-serving/
