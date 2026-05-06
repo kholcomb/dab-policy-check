@@ -1,31 +1,23 @@
 {
   "bundle": {
     "name": "secure_bundle",
+    "target": "prod",
+    "mode": "production",
     "databricks_cli_version": ">= 0.218.0",
     "git": {
       "branch": "main"
     }
   },
-  "targets": {
-    "prod": {
-      "mode": "production",
-      "workspace": {
-        "host": "https://my-workspace.cloud.databricks.com",
-        "root_path": "/Workspace/Shared/.bundle/secure_bundle/prod"
-      },
-      "run_as": {
-        "service_principal_name": "11111111-2222-3333-4444-555555555555"
-      },
-      "git": {
-        "branch": "main"
-      },
-      "permissions": [
-        {"group_name": "data-engineering", "level": "CAN_VIEW"}
-      ]
-    }
+  "workspace": {
+    "host": "https://my-workspace.cloud.databricks.com",
+    "root_path": "/Workspace/Shared/.bundle/secure_bundle/prod"
+  },
+  "run_as": {
+    "service_principal_name": "11111111-2222-3333-4444-555555555555"
   },
   "permissions": [
-    {"group_name": "platform-admins", "level": "CAN_MANAGE"}
+    {"group_name": "platform-admins", "level": "CAN_MANAGE"},
+    {"group_name": "data-engineering", "level": "CAN_VIEW"}
   ],
   "sync": {
     "exclude": [
