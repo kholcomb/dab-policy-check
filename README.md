@@ -33,7 +33,11 @@ implements what `DAB.md` describes.
 
 ```mermaid
 flowchart LR
-    V["bundle:validate<br/>P1 — schema"]
+    subgraph validate[validate stage]
+        direction TB
+        V["bundle:validate<br/>P1 — schema"]
+        F["fixtures:smoke<br/>policy + reporter +<br/>linter self-tests"]
+    end
 
     subgraph security[security stage]
         direction TB

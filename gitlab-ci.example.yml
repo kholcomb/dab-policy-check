@@ -31,6 +31,18 @@ default:
     - curl -sSL "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" | tar -xz -C /usr/local/bin conftest
   interruptible: true
 
+# ---------- VALIDATE: fixture self-tests ----------
+# Regression tests for the gating tooling itself: Rego policy, reporter
+# triage, exception linter, notification digest. Runs in parallel with
+# bundle:validate. Fails fast if scripts/, policy/, or fixtures/ break.
+fixtures:smoke:
+  stage: validate
+  needs: []
+  script:
+    - fixtures/test_policy.sh
+    - fixtures/test_reporter.sh
+    - fixtures/test_linter.sh
+
 # ---------- VALIDATE: P1 ----------
 bundle:validate:
   stage: validate
