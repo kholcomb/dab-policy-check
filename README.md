@@ -189,6 +189,32 @@ persistent state:
 Findings below the threshold are still rendered in `report.md` and
 `conftest-report.xml`, but do not fail the job.
 
+### Severity is about deploy-blocking, not category
+
+Severity (Critical / High / Medium / Low) controls **whether the pipeline
+fails**. The qualitative category — security vs operational vs hygiene —
+is documented per-rule in the `notes:` field of `policy/dab.catalog.yaml`
+and surfaced in the reporter's Markdown and SARIF output.
+
+The distinction matters for triage:
+
+- **P6** (CLI version pinned) is Low severity because it's a **reproducibility
+  / hygiene** control, not a security control. Don't escalate it as a
+  security finding.
+- **P15** (resources have explicit ownership) is Medium severity because it's
+  an **operational availability** control, not an authorization gap. The
+  failure mode is "resources orphan after offboarding," not "unauthorized
+  access."
+- **P11** (library versions pinned) is High severity, but **only covers
+  bundle-declared libraries**. Python deps from `requirements.txt` are
+  covered by P17/P18 in a separate CI job.
+- **P12** (no credentials in variable defaults) is Critical, but it's a
+  **regex-based defense-in-depth** control, weaker than gitleaks /
+  trufflehog / GitHub push protection.
+
+Read the `notes:` field on each rule before treating any finding in
+isolation — the framing changes how you should react.
+
 ## Adding or modifying a rule
 
 1. Add the deny rule to `policy/dab.rego`. Use the message format:

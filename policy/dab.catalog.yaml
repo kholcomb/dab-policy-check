@@ -8,9 +8,17 @@
 #   why         what shipping this misconfiguration costs
 #   fix         concrete remediation, copy-pasteable where possible
 #   references  doc anchors and external links
+#   notes       (optional) framing / interpretation context — when a rule is
+#               operational rather than security, when it overlaps another rule,
+#               when it is defense-in-depth and not a primary control, etc.
 #
 # Adding a rule? Add a catalog entry. The reporter fails CI if it sees a finding
 # for a rule_id with no entry here.
+#
+# Severity is about deploy-blocking behavior. The `notes` field carries the
+# qualitative framing security teams need to interpret findings correctly:
+# is this a confidentiality/integrity control, an availability control, or
+# pure reproducibility hygiene?
 
 P2:
   title: Prod target mode is "production"
@@ -92,6 +100,13 @@ P5:
 
   references:
     - DAB.md#9-secure-by-default-settings
+  notes: |
+    Partially redundant with branch-protection-enforced CI deploys. If your
+    CI checks out `main` before running `bundle deploy`, the protection at
+    the platform level already prevents non-main deploys. This rule still
+    catches direct deploys from non-protected branches (developer laptops),
+    so keep it on as defense-in-depth — but understand the primary control
+    is your CI's branch enforcement, not this rule.
 
 P6:
   title: CLI version pinned
@@ -110,6 +125,13 @@ P6:
 
   references:
     - DAB.md#1-what-a-dab-is
+  notes: |
+    This is a reproducibility / hygiene control, NOT a security control.
+    The risk it prevents is deploy inconsistency across contributors and
+    CI runners (different CLI versions can produce different resolved
+    bundles), not credential or authorization compromise. Severity is
+    correctly Low. Treat as informational; do not block deploys on this
+    finding alone.
 
 P7:
   title: No permissions overlap
@@ -153,6 +175,13 @@ P8:
 
   references:
     - DAB.md#7-permissions
+  notes: |
+    The default `broad_groups` set is `{users, account users}`, reflecting
+    Databricks' built-in account-level groups. Workspaces with custom broad
+    groups (e.g., `everyone-databricks`, `data-readers`, federated SCIM
+    groups that include all employees) should extend the set in
+    `policy/dab.rego`. The comparison is case-insensitive but the rule
+    cannot infer org-specific group semantics without configuration.
 
 P9:
   title: Cluster security mode is UC-compatible
@@ -171,6 +200,13 @@ P9:
 
   references:
     - https://docs.databricks.com/aws/en/compute/configure#access-modes
+  notes: |
+    The allowed `data_security_mode` set should be reviewed each Databricks
+    runtime release. Databricks introduces new access mode values from time
+    to time (e.g., `DATA_SECURITY_MODE_AUTO`); evaluate each against your
+    security posture before adding to the allowlist in `policy/dab.rego`.
+    Defense-in-depth complement: workspace-level cluster policies enforce
+    the same control centrally and outrank bundle-defined modes when set.
 
 P10:
   title: Init scripts only from workspace or volumes
@@ -215,6 +251,13 @@ P11:
 
   references:
     - https://peps.python.org/pep-0440/
+  notes: |
+    P11 covers libraries declared inside the bundle (job and cluster
+    `libraries:` blocks). It does NOT cover Python dependencies installed
+    from `requirements.txt` or `pyproject.toml` at runtime — those are
+    P17 (hash-pinning) and P18 (CVE scanning), enforced by `pip-audit` in
+    a separate CI job. Both surfaces (P11 + P17/P18) are needed for full
+    supply-chain coverage; neither subsumes the other.
 
 P12:
   title: No credentials in variable defaults
@@ -233,6 +276,14 @@ P12:
        variable-overrides.json.
   references:
     - DAB.md#9-secure-by-default-settings
+  notes: |
+    P12 is a regex-based detector and weaker than dedicated secret scanners
+    (gitleaks, trufflehog) and platform-level controls (GitHub push
+    protection). Treat as defense-in-depth; the primary control should be
+    upstream — pre-commit hook on every developer machine, plus push
+    protection at the platform level. Test fixtures in this repo use
+    `PLACEHOLDER_DAPI_TOKEN` / `PLACEHOLDER_AKIA_KEY` precisely because the
+    real patterns trip those upstream controls before the test even runs.
 
 P13:
   title: sync.exclude covers credential surfaces
@@ -278,6 +329,15 @@ P15:
 
   references:
     - DAB.md#7-permissions
+  notes: |
+    This is an operational-availability control, NOT a security control in
+    the confidentiality / integrity sense. The risk it prevents is
+    resources orphaning when the deploying identity offboards (no one can
+    modify, repair, or destroy them = effective DoS for ops). Severity is
+    Medium because the failure is recoverable (a workspace admin can
+    re-claim ownership), but doing so is reactive and expensive at scale.
+    Security teams triaging findings should treat P15 as continuity of
+    operations rather than as an authorization gap.
 
 P16:
   title: Model serving has rate limits and AI gateway
