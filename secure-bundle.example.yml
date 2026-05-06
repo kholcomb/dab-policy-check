@@ -1,0 +1,180 @@
+# =============================================================================
+# secure-bundle.example.yml -- Reference template for a hardened Databricks
+# Asset Bundle. Demonstrates the secure-by-default settings from DAB.md.
+#
+# Satisfies pre-deploy-checks.md: P2, P3, P4, P5, P6, P7, P8, P9, P10, P11,
+#   P13, P14, P15, P16. (P1/P12/P17/P18/P19/P20 are CI/source-tree concerns.)
+#
+# Placeholders to replace before use: workspace `host`, service principal IDs,
+#   group names (e.g. `platform-admins`), notebook/wheel paths, catalog names.
+# =============================================================================
+
+bundle:
+  name: secure_bundle
+  databricks_cli_version: ">= 0.218.0"   # P6: pin CLI for reproducible deploys
+
+include:
+  - resources/*.yml                       # Split resources into separate files
+
+variables:
+  prod_sp:
+    description: Service principal application ID used for prod run_as.
+    default: 11111111-2222-3333-4444-555555555555
+  notifications_email:
+    description: Address that receives on_failure notifications.
+    default: oncall@example.com
+  catalog:
+    description: Unity Catalog target.
+    default: main
+  cluster_config:                         # Complex (object) variable
+    description: Reusable hardened cluster spec.
+    type: complex
+    default:
+      spark_version: 15.4.x-scala2.12
+      node_type_id: i3.xlarge
+      num_workers: 2
+      data_security_mode: USER_ISOLATION  # P9: UC-compatible mode
+  shared_cluster_id:                      # P14: lookup avoids hard-coded IDs
+    description: ID of the shared cluster, resolved at deploy time.
+    lookup:
+      cluster: "shared-autoscaling"
+
+sync:
+  exclude:                                # P13: keep credential surfaces out of the workspace
+    - .env
+    - "*.pem"
+    - "*.key"
+    - "*.pfx"
+    - variable-overrides.json
+
+permissions:                              # P8: CAN_MANAGE only to a small admin group
+  - group_name: platform-admins
+    level: CAN_MANAGE
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://my-workspace.cloud.databricks.com
+
+  prod:
+    mode: production                      # P2: enforces prod guardrails
+    workspace:
+      host: https://my-workspace.cloud.databricks.com
+      root_path: /Workspace/Shared/.bundle/${bundle.name}/${bundle.target}  # P4: not user-bound
+    run_as:
+      service_principal_name: ${var.prod_sp}                                # P3: SP, not human
+    git:
+      branch: main                        # P5: only `main` may deploy to prod
+    permissions:                          # P7: distinct identities from top-level block
+      - group_name: data-engineering
+        level: CAN_VIEW
+
+resources:
+  jobs:
+    daily_etl:
+      name: daily_etl_${bundle.target}
+      permissions:                        # P15: explicit IS_OWNER + CAN_MANAGE
+        - service_principal_name: ${var.prod_sp}
+          level: IS_OWNER
+        - group_name: data-engineering-leads
+          level: CAN_MANAGE
+      job_clusters:
+        - job_cluster_key: main
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            node_type_id: i3.xlarge
+            num_workers: 2
+            data_security_mode: USER_ISOLATION  # P9
+            init_scripts:                       # P10: volumes (not dbfs)
+              - volumes:
+                  destination: /Volumes/${var.catalog}/ops/init/harden.sh
+      tasks:
+        - task_key: extract
+          job_cluster_key: main
+          notebook_task:
+            notebook_path: ../src/extract.py
+          libraries:
+            - pypi:
+                package: requests==2.32.3       # P11: pinned with ==
+        - task_key: load
+          job_cluster_key: main
+          depends_on:
+            - task_key: extract
+          python_wheel_task:
+            package_name: secure_bundle_pkg
+            entry_point: load
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"
+        timezone_id: UTC
+        pause_status: UNPAUSED
+      email_notifications:
+        on_failure:
+          - ${var.notifications_email}
+
+  pipelines:
+    curated_pipeline:
+      name: curated_pipeline_${bundle.target}
+      catalog: ${var.catalog}
+      target: curated
+      permissions:                        # P15
+        - service_principal_name: ${var.prod_sp}
+          level: IS_OWNER
+        - group_name: data-engineering-leads
+          level: CAN_MANAGE
+      libraries:
+        - notebook:
+            path: ../src/pipelines/curated.py
+      clusters:
+        - label: default
+          num_workers: 2
+          data_security_mode: USER_ISOLATION  # P9
+          init_scripts:                       # P10
+            - workspace:
+                destination: /Workspace/Shared/.bundle/${bundle.name}/init/harden.sh
+
+  model_serving_endpoints:
+    fraud_scorer:
+      name: fraud_scorer_${bundle.target}
+      permissions:
+        - service_principal_name: ${var.prod_sp}
+          level: CAN_MANAGE
+      config:
+        served_entities:
+          - entity_name: ${var.catalog}.ml.fraud_model
+            entity_version: "3"
+            workload_size: Small
+            scale_to_zero_enabled: true
+      rate_limits:                        # P16
+        - calls: 60
+          renewal_period: minute
+      ai_gateway:                         # P16
+        usage_tracking_config:
+          enabled: true
+        inference_table_config:
+          enabled: true
+          catalog_name: ${var.catalog}
+          schema_name: ml_audit
+          table_name_prefix: fraud_scorer
+        guardrails:
+          input:
+            safety: true
+            pii:
+              behavior: BLOCK
+          output:
+            safety: true
+
+  clusters:
+    shared_analytics:
+      cluster_name: shared_analytics_${bundle.target}
+      spark_version: 15.4.x-scala2.12
+      node_type_id: i3.xlarge
+      num_workers: 2
+      data_security_mode: USER_ISOLATION  # P9
+      init_scripts:                       # P10: workspace source, not dbfs
+        - workspace:
+            destination: /Workspace/Shared/.bundle/${bundle.name}/init/harden.sh
+      permissions:
+        - service_principal_name: ${var.prod_sp}
+          level: CAN_MANAGE

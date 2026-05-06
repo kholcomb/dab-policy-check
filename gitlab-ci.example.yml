@@ -1,0 +1,118 @@
+# Reference GitLab CI pipeline for Databricks Asset Bundle (DAB) pre-deployment security gating.
+# Companion to DAB.md and pre-deploy-checks.md in this directory.
+#
+# Pipeline shape:
+#   validate  -> bundle:validate (P1) produces bundle.resolved.json
+#   security  -> conftest (P2-P16), pip-audit (P17, P18) in parallel
+#   drift     -> bundle:drift (P19), workspace:audit-delivery (P20)
+#   deploy    -> protected, manual, main only
+#
+# Authentication:
+#   Preferred: GitLab OIDC -> cloud STS -> Databricks SP secret in Vault/Secrets Manager.
+#   Fallback: protected, masked CI/CD variables scoped to the matching `environment:`.
+
+stages: [validate, security, drift, deploy]
+
+variables:
+  DATABRICKS_BUNDLE_TARGET: dev
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  CONFTEST_VERSION: "0.56.0"
+
+default:
+  image: python:3.11-slim
+  cache:
+    key: ${CI_COMMIT_REF_SLUG}
+    paths:
+      - .cache/pip
+      - .databricks/
+  before_script:
+    - apt-get update -qq && apt-get install -qq -y --no-install-recommends curl ca-certificates
+    - pip install --quiet "databricks-cli>=0.218.0" "databricks-sdk" "pip-audit"
+    - curl -sSL "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" | tar -xz -C /usr/local/bin conftest
+  interruptible: true
+
+# ---------- VALIDATE: P1 ----------
+bundle:validate:
+  stage: validate
+  id_tokens:
+    DATABRICKS_OIDC_TOKEN:
+      aud: https://gitlab.com
+  script:
+    - databricks bundle validate -t "$DATABRICKS_BUNDLE_TARGET" -o json > bundle.resolved.json
+  artifacts:
+    paths:
+      - bundle.resolved.json
+    expire_in: 1 week
+
+# ---------- SECURITY: P2-P16 ----------
+policy:conftest:
+  stage: security
+  needs: [bundle:validate]
+  script:
+    - conftest test --policy policy/ --all-namespaces --output=stdout bundle.resolved.json
+    - conftest test --policy policy/ --all-namespaces --output=junit bundle.resolved.json > conftest-report.xml || true
+  artifacts:
+    when: always
+    reports:
+      junit: conftest-report.xml
+
+# ---------- SECURITY: source-tree variants of P12, P14 ----------
+policy:source-grep:
+  stage: security
+  needs: []
+  script:
+    # P12 source variant: credentials in YAML defaults
+    - "! grep -rE 'dapi[a-f0-9]{32}|AKIA[0-9A-Z]{16}|token=' --include='*.yml' --include='*.yaml' ."
+    # P14: raw infrastructure IDs in source YAML
+    - "! grep -rE '(existing_cluster_id|warehouse_id|job_id|pipeline_id):\\s*[\"'\\'']?[0-9a-f-]{8,}' --include='*.yml' --include='*.yaml' ."
+
+# ---------- SECURITY: P17, P18 ----------
+deps:audit:
+  stage: security
+  needs: []
+  script:
+    # P17: hash-pinned install must succeed
+    - pip-audit --require-hashes --requirement requirements.txt
+    # P18: known CVEs
+    - pip-audit --strict --requirement requirements.txt
+  allow_failure: false
+
+# ---------- DRIFT: P19 ----------
+bundle:drift:
+  stage: drift
+  needs: [bundle:validate]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
+  script:
+    - databricks bundle summary -t "$DATABRICKS_BUNDLE_TARGET" -o json > bundle.deployed.json
+    - python scripts/diff_bundle.py bundle.resolved.json bundle.deployed.json
+
+# ---------- DRIFT: P20 ----------
+workspace:audit-delivery:
+  stage: drift
+  needs: [bundle:validate]
+  script:
+    - python scripts/check_audit_delivery.py --target "$DATABRICKS_BUNDLE_TARGET"
+
+# ---------- DEPLOY ----------
+deploy:dev:
+  stage: deploy
+  environment: development
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+  variables:
+    DATABRICKS_BUNDLE_TARGET: dev
+  script:
+    - databricks bundle deploy -t dev
+
+deploy:prod:
+  stage: deploy
+  environment: production
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: manual
+  variables:
+    DATABRICKS_BUNDLE_TARGET: prod
+  script:
+    - databricks bundle deploy -t prod
