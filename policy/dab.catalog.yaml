@@ -101,12 +101,13 @@ P5:
   references:
     - DAB.md#9-secure-by-default-settings
   notes: |
-    Partially redundant with branch-protection-enforced CI deploys. If your
-    CI checks out `main` before running `bundle deploy`, the protection at
-    the platform level already prevents non-main deploys. This rule still
-    catches direct deploys from non-protected branches (developer laptops),
-    so keep it on as defense-in-depth — but understand the primary control
-    is your CI's branch enforcement, not this rule.
+    `git.branch` is enforced by `databricks bundle deploy` itself: the CLI
+    refuses to deploy when the bundle's currently checked-out branch does
+    not match the pinned value. This is a deploy-time gate at the bundle
+    layer, independent of any platform-level controls. The failure mode it
+    prevents: a deployer running `bundle deploy` from the wrong branch and
+    overwriting prod with unintended state. Pin the value to the branch
+    your release process treats as authoritative.
 
 P6:
   title: CLI version pinned
@@ -277,13 +278,13 @@ P12:
   references:
     - DAB.md#9-secure-by-default-settings
   notes: |
-    P12 is a regex-based detector and weaker than dedicated secret scanners
-    (gitleaks, trufflehog) and platform-level controls (GitHub push
-    protection). Treat as defense-in-depth; the primary control should be
-    upstream — pre-commit hook on every developer machine, plus push
-    protection at the platform level. Test fixtures in this repo use
-    `PLACEHOLDER_DAPI_TOKEN` / `PLACEHOLDER_AKIA_KEY` precisely because the
-    real patterns trip those upstream controls before the test even runs.
+    P12 is a regex-based detector limited to a small fixed pattern set;
+    dedicated secret scanners (gitleaks, trufflehog) cover more credential
+    formats and entropy patterns. Use P12 as defense-in-depth, not as the
+    sole control against credential leaks. Test fixtures in this repo use
+    `PLACEHOLDER_DAPI_TOKEN` / `PLACEHOLDER_AKIA_KEY` because the literal
+    patterns are flagged by some upstream scanners before the test fixture
+    can be committed.
 
 P13:
   title: sync.exclude covers credential surfaces

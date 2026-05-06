@@ -209,8 +209,9 @@ The distinction matters for triage:
   bundle-declared libraries**. Python deps from `requirements.txt` are
   covered by P17/P18 in a separate CI job.
 - **P12** (no credentials in variable defaults) is Critical, but it's a
-  **regex-based defense-in-depth** control, weaker than gitleaks /
-  trufflehog / GitHub push protection.
+  **regex-based defense-in-depth** control with a small fixed pattern set;
+  dedicated secret scanners (gitleaks, trufflehog) cover more credential
+  formats. Don't treat P12 as the sole credential-leak control.
 
 Read the `notes:` field on each rule before treating any finding in
 isolation — the framing changes how you should react.
