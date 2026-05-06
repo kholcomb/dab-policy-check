@@ -18,7 +18,9 @@ implements what `DAB.md` describes.
 | `secure-bundle.example.yml` | Annotated `databricks.yml` template demonstrating every secure-by-default setting. Each control is tagged with the P-rule it satisfies. |
 | `policy/dab.rego` | OPA / Conftest policy pack implementing P2–P16 against the resolved bundle JSON. |
 | `policy/dab.catalog.yaml` | Per-rule catalog of `title`, `severity`, `why`, `fix`, and references — consumed by the reporter to produce rich findings. |
-| `scripts/conftest_report.py` | Wraps `conftest`, joins findings with the catalog, emits Markdown / JUnit / JSON. Used as the pipeline gate. |
+| `policy/exceptions.yaml` | Time-bounded waivers (rule_id, resource glob, reason, approver, expires). Empty by default. |
+| `scripts/conftest_report.py` | Wraps `conftest`, joins findings with the catalog, applies waivers, emits Markdown / JUnit / JSON / SARIF. Used as the pipeline gate. |
+| `scripts/validate_exceptions.py` | Two subcommands: `lint` (PR-time schema + expiry validation, optional CODEOWNERS check) and `notify` (scheduled-pipeline digest of waivers expiring within configurable thresholds). |
 | `scripts/diff_bundle.py` | P19 — structural diff of resolved-bundle vs deployed-bundle JSON. |
 | `scripts/check_audit_delivery.py` | P20 — confirms `system.access.audit` is fresh in the target workspace. |
 | `fixtures/good.json` | Resolved-bundle JSON that satisfies every rule. |
@@ -34,15 +36,18 @@ flowchart LR
 
     subgraph security[security stage]
         direction TB
-        C["policy:conftest<br/>P2–P16<br/>(Rego + catalog<br/>+ reporter)"]
+        C["policy:conftest<br/>P2–P16<br/>(Rego + catalog<br/>+ exceptions<br/>+ reporter)"]
         G["policy:source-grep<br/>P12 source · P14"]
         D["deps:audit<br/>P17 · P18"]
+        E["exceptions:lint<br/>(on PR change)"]
+        EC["exceptions:codeowners<br/>(opt-in)"]
     end
 
     subgraph drift[drift stage]
         direction TB
         BD["bundle:drift<br/>P19"]
         WA["workspace:audit-delivery<br/>P20"]
+        EN["exceptions:notify<br/>(scheduled only)"]
     end
 
     subgraph deploy[deploy stage]
@@ -99,6 +104,72 @@ The reporter writes:
   converters, DefectDojo, SonarQube, and other security dashboards.
   `security-severity` is set so consumers map findings to their own
   Critical/High/Medium/Low bands without ambiguity.
+
+## Exceptions (waivers)
+
+Sometimes a finding is a known, accepted risk for a defined window. The
+exceptions file lets you waive findings deterministically without disabling
+the rule globally.
+
+```yaml
+# policy/exceptions.yaml
+- rule_id: P11
+  resource: "resources.jobs.legacy_etl.tasks[*].libraries[*].pypi"
+  reason: |
+    legacy_etl pulls from internal Artifactory which guarantees immutability
+    of published versions. Floating tag is acceptable until the migration
+    to versioned package names completes (DATA-1234).
+  approver: alice@example.com
+  approved: 2026-04-15
+  expires: 2026-09-30
+  ticket: https://linear.app/example/issue/DATA-1234
+```
+
+Triage at report time:
+
+| Match outcome | Effect |
+|---|---|
+| Unexpired exception | Waived. Listed in the report; does not fail the gate. JUnit `<skipped>`, SARIF `suppressions`. |
+| Expired exception | Active with `[EXPIRED-WAIVER]` marker. Fails the gate. |
+| No matching exception | Active. Normal threshold logic. |
+
+### Layered enforcement
+
+Expiry is enforced in four places, because ephemeral CI runners have no
+persistent state:
+
+1. **Pipeline-time** (reporter): compares `expires:` against
+   `CI_PIPELINE_CREATED_AT` (preferred) or `GITHUB_RUN_STARTED_AT`, falling
+   back to `datetime.now()`. Orchestrator timestamps are harder to forge in
+   ephemeral runners than the runner's local clock.
+2. **PR-time** (`validate_exceptions.py lint`): rejects malformed,
+   already-expired, post-dated, or far-future entries. `--max-future-days 90`
+   by default. Optional `--codeowners <path>` validates `approver:` against
+   the CODEOWNERS rule covering `policy/exceptions.yaml` (opt-in only).
+3. **Scheduled** (`validate_exceptions.py notify`): tiered digest of waivers
+   expiring within `--warn-days 7,14,30` to a Slack webhook (or stdout for
+   testing). Forces renewal action ahead of expiry.
+4. **Build log** (reporter Markdown): every active waiver renders with
+   days-remaining, approver, and ticket — visible decay clock in every job.
+
+### Reporter flags relevant to waivers
+
+| Flag | What it does |
+|---|---|
+| `--exceptions <path>` | Enable waiver application. Without it, no waivers are read. |
+| `--no-waive-critical` | Refuse to apply waivers to Critical findings. They stay active with `[WAIVER-REJECTED]` marker. |
+| `--strict-waivers` | Fail the gate if any exception did not match a finding (catches stale waivers). |
+
+### Governance recommendations
+
+- Add a CODEOWNERS rule restricting edits to `policy/exceptions.yaml` to
+  the security team.
+- Set `ENFORCE_CODEOWNERS=true` in the production environment to enable
+  the `exceptions:codeowners` job.
+- Schedule `exceptions:notify` to run daily; route the webhook to the
+  channel that owns this policy.
+- Keep `--max-future-days` ≤ 90. Waivers are not strategic — they are
+  iterative.
 
 ## Severity policy
 

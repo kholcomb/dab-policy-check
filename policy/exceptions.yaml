@@ -1,0 +1,34 @@
+# Pre-deploy policy exceptions (waivers).
+#
+# Each entry suppresses a finding from a specific rule, scoped to a resource
+# pattern, with mandatory justification, approver, and expiry. The reporter
+# joins findings with this file at run time:
+#
+#   matching, unexpired  -> waived (reported, does not fail the gate)
+#   matching, expired    -> active with [EXPIRED-WAIVER] marker (fails the gate)
+#   no match             -> active (normal threshold logic)
+#
+# Schema (every field required unless noted):
+#
+#   - rule_id:   string         # e.g. "P11"
+#     resource:  glob           # default "*"; matches finding resource path
+#     reason:    string         # the WHY — what risk has been accepted
+#     approver:  string         # email or @handle of the human who approved
+#     approved:  YYYY-MM-DD     # the date approved (linter requires <= today)
+#     expires:   YYYY-MM-DD     # the date the waiver lapses (linter requires
+#                               #   today < expires <= today + max_future_days)
+#     ticket:    URL (optional) # link to issue / change record
+#
+# Governance hooks:
+#   - validate_exceptions.py lint       PR-time schema + expiry validation
+#   - validate_exceptions.py notify     scheduled-pipeline expiry notifications
+#   - --codeowners (lint, opt-in)       require approver to be a CODEOWNER of
+#                                       this file
+#
+# Operational notes:
+#   - Default max future expiry is 90 days. Long-tail waivers should be split
+#     into iterative renewals rather than one multi-year ticket.
+#   - This file is itself a security artifact. Recommend a CODEOWNERS entry
+#     restricting edits to the security team.
+
+[]

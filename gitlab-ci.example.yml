@@ -53,11 +53,13 @@ policy:conftest:
         --policy policy/
         --catalog policy/dab.catalog.yaml
         --bundle bundle.resolved.json
+        --exceptions policy/exceptions.yaml
         --markdown report.md
         --junit conftest-report.xml
         --json report.json
         --sarif report.sarif
         --fail-on high
+        --strict-waivers
     - cat report.md
   artifacts:
     when: always
@@ -90,6 +92,33 @@ deps:audit:
     - pip-audit --strict --requirement requirements.txt
   allow_failure: false
 
+# ---------- SECURITY: exception-file linting (PR-time gate) ----------
+exceptions:lint:
+  stage: security
+  needs: []
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes: [policy/exceptions.yaml]
+    - if: $CI_COMMIT_BRANCH == "main"
+      changes: [policy/exceptions.yaml]
+  script:
+    - python scripts/validate_exceptions.py lint policy/exceptions.yaml
+        --max-future-days 90
+
+# ---------- SECURITY: optional CODEOWNERS validation ----------
+# Enable by setting ENFORCE_CODEOWNERS=true on the protected `production`
+# environment (or globally) once a CODEOWNERS file exists.
+exceptions:codeowners:
+  stage: security
+  needs: []
+  rules:
+    - if: $ENFORCE_CODEOWNERS == "true"
+      changes: [policy/exceptions.yaml, CODEOWNERS, .github/CODEOWNERS, .gitlab/CODEOWNERS]
+  script:
+    - python scripts/validate_exceptions.py lint policy/exceptions.yaml
+        --max-future-days 90
+        --codeowners CODEOWNERS
+
 # ---------- DRIFT: P19 ----------
 bundle:drift:
   stage: drift
@@ -107,6 +136,20 @@ workspace:audit-delivery:
   needs: [bundle:validate]
   script:
     - python scripts/check_audit_delivery.py --target "$DATABRICKS_BUNDLE_TARGET"
+
+# ---------- SCHEDULED: expiring-waiver notifications ----------
+# Set the schedule in GitLab UI (Pipelines → Schedules), e.g. daily.
+# Requires SLACK_SECURITY_WEBHOOK as a protected, masked CI variable.
+exceptions:notify:
+  stage: drift
+  needs: []
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  script:
+    - python scripts/validate_exceptions.py notify policy/exceptions.yaml
+        --warn-days 7,14,30
+        --channel slack
+        --webhook "$SLACK_SECURITY_WEBHOOK"
 
 # ---------- DEPLOY ----------
 deploy:dev:
