@@ -39,6 +39,23 @@ SEVERITY_LABEL = {
     "Low":      "[LOW]",
 }
 
+# SARIF v2.1.0 standard levels.
+SEVERITY_TO_SARIF_LEVEL = {
+    "Critical": "error",
+    "High":     "error",
+    "Medium":   "warning",
+    "Low":      "note",
+}
+
+# GitHub Code Scanning maps numeric `security-severity` to category bands:
+# 9.0+ critical, 7.0-8.9 high, 4.0-6.9 medium, 0.1-3.9 low.
+SEVERITY_TO_SECURITY_SEVERITY = {
+    "Critical": "9.5",
+    "High":     "8.0",
+    "Medium":   "5.0",
+    "Low":      "2.0",
+}
+
 MSG_RE = re.compile(
     r"^\[(?P<id>P\d+)/(?P<sev>\w+)\]\s*"
     r"(?P<body>.*?)\s*"
@@ -203,6 +220,86 @@ def render_json(findings: list, counts: dict) -> str:
     }, indent=2)
 
 
+def _sarif_rule(rule_id: str, entry: dict) -> dict:
+    severity = entry.get("severity", "Medium")
+    why = (entry.get("why") or "").strip()
+    fix = (entry.get("fix") or "").strip()
+    rule = {
+        "id": rule_id,
+        "name": rule_id,
+        "shortDescription": {"text": entry.get("title", rule_id)},
+        "fullDescription": {"text": why or entry.get("title", rule_id)},
+        "help": {
+            "text":     f"Why: {why}\n\nFix: {fix}".strip(),
+            "markdown": f"**Why:**\n\n{why}\n\n**Fix:**\n\n{fix}".strip(),
+        },
+        "defaultConfiguration": {
+            "level": SEVERITY_TO_SARIF_LEVEL.get(severity, "warning"),
+        },
+        "properties": {
+            "security-severity": SEVERITY_TO_SECURITY_SEVERITY.get(severity, "5.0"),
+            "tags": ["security", "databricks", "dab"],
+        },
+    }
+    refs = entry.get("references") or []
+    http_refs = [r for r in refs if isinstance(r, str) and r.startswith("http")]
+    if http_refs:
+        rule["helpUri"] = http_refs[0]
+    return rule
+
+
+def render_sarif(findings: list, catalog: dict) -> str:
+    """Emit SARIF v2.1.0. Targets GitHub Code Scanning and generic SARIF tools.
+    artifactLocation points at databricks.yml as a placeholder; the resource path
+    within the resolved bundle is carried in logicalLocations."""
+    rules = [_sarif_rule(rid, catalog[rid]) for rid in sorted(catalog)]
+    rule_index = {r["id"]: i for i, r in enumerate(rules)}
+
+    results = []
+    for f in findings:
+        results.append({
+            "ruleId": f["rule_id"],
+            "ruleIndex": rule_index.get(f["rule_id"], -1),
+            "level": SEVERITY_TO_SARIF_LEVEL.get(f["severity"], "warning"),
+            "message": {"text": f["body"]},
+            "locations": [
+                {
+                    "physicalLocation": {
+                        "artifactLocation": {"uri": "databricks.yml"},
+                        "region": {"startLine": 1},
+                    },
+                    "logicalLocations": [
+                        {
+                            "fullyQualifiedName": f["resource"],
+                            "kind": "value",
+                        }
+                    ],
+                }
+            ],
+            "properties": {
+                "security-severity": SEVERITY_TO_SECURITY_SEVERITY.get(f["severity"], "5.0"),
+            },
+        })
+
+    sarif = {
+        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "dab-policy",
+                        "informationUri": "https://docs.databricks.com/aws/en/dev-tools/bundles/",
+                        "rules": rules,
+                    }
+                },
+                "results": results,
+            }
+        ],
+    }
+    return json.dumps(sarif, indent=2)
+
+
 def write_output(path: Path | None, content: str) -> None:
     if path is None:
         return
@@ -217,6 +314,7 @@ def main() -> int:
     parser.add_argument("--markdown", type=Path, help="Write Markdown report to this path")
     parser.add_argument("--junit", type=Path, help="Write JUnit XML report to this path")
     parser.add_argument("--json", dest="json_out", type=Path, help="Write JSON report to this path")
+    parser.add_argument("--sarif", type=Path, help="Write SARIF v2.1.0 report to this path")
     parser.add_argument(
         "--fail-on",
         choices=["critical", "high", "medium", "low", "none"],
@@ -235,8 +333,9 @@ def main() -> int:
     write_output(args.markdown, render_markdown(findings, counts))
     write_output(args.junit, render_junit(findings))
     write_output(args.json_out, render_json(findings, counts))
+    write_output(args.sarif, render_sarif(findings, catalog))
 
-    if not (args.markdown or args.junit or args.json_out):
+    if not (args.markdown or args.junit or args.json_out or args.sarif):
         sys.stdout.write(render_markdown(findings, counts))
 
     if args.fail_on == "none":

@@ -28,19 +28,35 @@ implements what `DAB.md` describes.
 
 ## The pipeline at a glance
 
-```
-   bundle:validate    →   policy:conftest    →   bundle:drift
-   (P1 — schema)          (P2–P16 via              (P19)
-                           Rego + catalog
-                           + reporter)         workspace:audit-delivery
-                                               (P20)
+```mermaid
+flowchart LR
+    V["bundle:validate<br/>P1 — schema"]
 
-   deps:audit                                  deploy:dev
-   (P17 P18)                                   deploy:prod (manual,
-                                                            main-only)
+    subgraph security[security stage]
+        direction TB
+        C["policy:conftest<br/>P2–P16<br/>(Rego + catalog<br/>+ reporter)"]
+        G["policy:source-grep<br/>P12 source · P14"]
+        D["deps:audit<br/>P17 · P18"]
+    end
 
-   policy:source-grep
-   (P12 source / P14)
+    subgraph drift[drift stage]
+        direction TB
+        BD["bundle:drift<br/>P19"]
+        WA["workspace:audit-delivery<br/>P20"]
+    end
+
+    subgraph deploy[deploy stage]
+        direction TB
+        DD["deploy:dev"]
+        DP["deploy:prod<br/>manual · main only"]
+    end
+
+    V --> C
+    V --> BD
+    V --> WA
+    security --> deploy
+    drift --> deploy
+    DD --> DP
 ```
 
 ## Try it locally
@@ -79,6 +95,10 @@ The reporter writes:
 - `conftest-report.xml` — surfaced in the GitLab MR test widget via
   `reports:junit:`.
 - `report.json` — machine-readable; archive for downstream tooling.
+- `report.sarif` — SARIF v2.1.0; for GitHub Code Scanning, GitLab SARIF
+  converters, DefectDojo, SonarQube, and other security dashboards.
+  `security-severity` is set so consumers map findings to their own
+  Critical/High/Medium/Low bands without ambiguity.
 
 ## Severity policy
 
