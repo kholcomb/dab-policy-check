@@ -127,6 +127,7 @@ def join_with_catalog(findings: list, catalog: dict) -> list:
             "title":      cat.get("title", f["rule_id"]),
             "why":        (cat.get("why") or "").strip(),
             "fix":        (cat.get("fix") or "").strip(),
+            "notes":      (cat.get("notes") or "").strip(),
             "references": cat.get("references", []) or [],
         })
     return enriched
@@ -282,6 +283,11 @@ def render_markdown(active: list, waived: list, unused: list, counts: dict) -> s
                     lines.append("")
                     lines.append(f["fix"])
                     lines.append("")
+                if f.get("notes"):
+                    lines.append("**Notes:**")
+                    lines.append("")
+                    lines.append(f["notes"])
+                    lines.append("")
                 refs = f.get("references") or []
                 if refs:
                     lines.append("**References:**")
@@ -389,14 +395,17 @@ def _sarif_rule(rule_id: str, entry: dict) -> dict:
     severity = entry.get("severity", "Medium")
     why = (entry.get("why") or "").strip()
     fix = (entry.get("fix") or "").strip()
+    notes = (entry.get("notes") or "").strip()
+    notes_text = f"\n\nNotes: {notes}" if notes else ""
+    notes_md = f"\n\n**Notes:**\n\n{notes}" if notes else ""
     rule = {
         "id": rule_id,
         "name": rule_id,
         "shortDescription": {"text": entry.get("title", rule_id)},
         "fullDescription": {"text": why or entry.get("title", rule_id)},
         "help": {
-            "text":     f"Why: {why}\n\nFix: {fix}".strip(),
-            "markdown": f"**Why:**\n\n{why}\n\n**Fix:**\n\n{fix}".strip(),
+            "text":     f"Why: {why}\n\nFix: {fix}{notes_text}".strip(),
+            "markdown": f"**Why:**\n\n{why}\n\n**Fix:**\n\n{fix}{notes_md}".strip(),
         },
         "defaultConfiguration": {"level": SEVERITY_TO_SARIF_LEVEL.get(severity, "warning")},
         "properties": {
