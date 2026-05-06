@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke test for DAB/policy/dab.rego.
+# Smoke test for the policy pack under DAB/policy/ (package `dab`).
 #   - good.json: every rule should pass (zero deny messages).
 #   - bad.json:  every implemented P-rule should fire at least once.
 #

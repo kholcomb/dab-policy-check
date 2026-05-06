@@ -65,7 +65,7 @@ python scripts/check_audit_delivery.py --target "$TARGET"
 
 ## Notes on enforcement layer
 
-- **Resolved JSON** checks (P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P13, P15, P16) run in Rego via `conftest`. See `policy/dab.rego`.
+- **Resolved JSON** checks (P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P13, P15, P16) run in Rego via `conftest`. See `policy/*.rego` (package `dab`, split by domain — `helpers`, `targets`, `bundle`, `permissions`, `clusters`, `libraries`, `secrets`, `model_serving`).
 - **Source YAML** checks (P14, and the source variant of P12) run via `grep` / `semgrep` against the YAML files before `bundle validate` resolves substitutions and lookups. After resolution, a `lookup:`-derived ID and a hardcoded ID are indistinguishable.
 - **CLI / workspace** checks (P1, P19, P20) run via the `databricks` CLI and SDK in helper scripts.
 - Dependency checks (P17, P18) run against the source tree via `pip-audit`.
