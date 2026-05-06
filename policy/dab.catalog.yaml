@@ -1,4 +1,4 @@
-# Rule catalog for DAB pre-deploy policy (policy/dab.rego).
+# Rule catalog for DAB pre-deploy policy (policy/*.rego, package `dab`).
 # Keyed by rule ID emitted in deny messages: [P<n>/<sev>] ... (resource: ...).
 # Used by scripts/conftest_report.py to render rich reports.
 #
@@ -181,7 +181,7 @@ P8:
     Databricks' built-in account-level groups. Workspaces with custom broad
     groups (e.g., `everyone-databricks`, `data-readers`, federated SCIM
     groups that include all employees) should extend the set in
-    `policy/dab.rego`. The comparison is case-insensitive but the rule
+    `policy/permissions.rego`. The comparison is case-insensitive but the rule
     cannot infer org-specific group semantics without configuration.
 
 P9:
@@ -205,7 +205,7 @@ P9:
     The allowed `data_security_mode` set should be reviewed each Databricks
     runtime release. Databricks introduces new access mode values from time
     to time (e.g., `DATA_SECURITY_MODE_AUTO`); evaluate each against your
-    security posture before adding to the allowlist in `policy/dab.rego`.
+    security posture before adding to the allowlist in `policy/clusters.rego`.
     Defense-in-depth complement: workspace-level cluster policies enforce
     the same control centrally and outrank bundle-defined modes when set.
 

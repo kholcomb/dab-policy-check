@@ -17,7 +17,7 @@ implements what `DAB.md` describes.
 | `pre-deploy-checks.md` | Catalog of 20 deterministic, pre-deployment security checks (P1–P20) with severity, risk, predicate, and enforcement layer. |
 | `EXCEPTIONS.md` | Per-rule catalog of legitimate-waiver patterns: when a finding warrants an `exceptions.yaml` entry, recommended `resource:` scope and `expires:` cadence, anti-patterns, and a reviewer checklist. |
 | `secure-bundle.example.yml` | Annotated `databricks.yml` template demonstrating every secure-by-default setting. Each control is tagged with the P-rule it satisfies. |
-| `policy/dab.rego` | OPA / Conftest policy pack implementing P2–P16 against the resolved bundle JSON. |
+| `policy/*.rego` | OPA / Conftest policy pack (package `dab`) implementing P2–P16 against the resolved bundle JSON. Split by domain: `helpers.rego` (shared), `targets.rego` (P2–P5), `bundle.rego` (P6), `permissions.rego` (P7, P8, P15), `clusters.rego` (P9, P10), `libraries.rego` (P11), `secrets.rego` (P12, P13), `model_serving.rego` (P16). |
 | `policy/dab.catalog.yaml` | Per-rule catalog of `title`, `severity`, `why`, `fix`, and references — consumed by the reporter to produce rich findings. |
 | `policy/exceptions.yaml` | Time-bounded waivers (rule_id, resource glob, reason, approver, expires). Empty by default. |
 | `scripts/conftest_report.py` | Wraps `conftest`, joins findings with the catalog, applies waivers, emits Markdown / JUnit / JSON / SARIF. Used as the pipeline gate. |
@@ -218,7 +218,9 @@ isolation — the framing changes how you should react.
 
 ## Adding or modifying a rule
 
-1. Add the deny rule to `policy/dab.rego`. Use the message format:
+1. Add the deny rule to the appropriate domain file under `policy/` (e.g.,
+   `permissions.rego`, `clusters.rego`, `secrets.rego`, …) — or create a new
+   one in the same `dab` package. Use the message format:
    `[<id>/<Severity>] <body> (resource: <path>)`.
 2. Add a matching entry to `policy/dab.catalog.yaml` with `title`,
    `severity`, `why`, `fix`, `references`. The reporter fails CI if a
@@ -238,4 +240,4 @@ isolation — the framing changes how you should react.
   validation). Those are post-deployment scans; this directory is the
   pre-deployment gate.
 - Any organization-specific allowlists or denylists. The `broad_groups`
-  set in `policy/dab.rego` is a starting point — extend it per org.
+  set in `policy/permissions.rego` is a starting point — extend it per org.

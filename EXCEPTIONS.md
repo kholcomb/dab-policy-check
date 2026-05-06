@@ -1,7 +1,7 @@
 # When a waiver is the right call
 
 Companion to `pre-deploy-checks.md` and `policy/exceptions.yaml`. The rules in
-`policy/dab.rego` encode a *prod* security posture; in practice every rule has
+`policy/*.rego` encode a *prod* security posture; in practice every rule has
 edge cases where the right answer is a time-bounded waiver rather than
 weakening the rule globally.
 
@@ -248,8 +248,8 @@ launch criteria. `expires:` ≤ 30 days for Pattern B; ≤ 90 days for Pattern A
 
 ## What does *not* belong in a waiver
 
-- "We disagree with the rule." — open a PR against `policy/dab.rego` or
-  `pre-deploy-checks.md` instead.
+- "We disagree with the rule." — open a PR against the relevant
+  `policy/*.rego` file or `pre-deploy-checks.md` instead.
 - "The fix is complicated." — that's the point of the rule. File the ticket;
   the waiver is the *bridge*, not the destination.
 - "It's only dev." — the policy pack already scopes prod-only rules with
