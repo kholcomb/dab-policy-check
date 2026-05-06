@@ -15,6 +15,7 @@ implements what `DAB.md` describes.
 |---|---|
 | `DAB.md` | Developer reference: what a DAB is, the structure of `databricks.yml`, resources, variables, targets, permissions, secure-by-default settings, and CLI commands. |
 | `pre-deploy-checks.md` | Catalog of 20 deterministic, pre-deployment security checks (P1–P20) with severity, risk, predicate, and enforcement layer. |
+| `EXCEPTIONS.md` | Per-rule catalog of legitimate-waiver patterns: when a finding warrants an `exceptions.yaml` entry, recommended `resource:` scope and `expires:` cadence, anti-patterns, and a reviewer checklist. |
 | `secure-bundle.example.yml` | Annotated `databricks.yml` template demonstrating every secure-by-default setting. Each control is tagged with the P-rule it satisfies. |
 | `policy/dab.rego` | OPA / Conftest policy pack implementing P2–P16 against the resolved bundle JSON. |
 | `policy/dab.catalog.yaml` | Per-rule catalog of `title`, `severity`, `why`, `fix`, and references — consumed by the reporter to produce rich findings. |
