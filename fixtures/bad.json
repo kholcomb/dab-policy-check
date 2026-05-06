@@ -1,23 +1,18 @@
 {
   "bundle": {
-    "name": "bad_bundle"
+    "name": "bad_bundle",
+    "target": "prod"
   },
-  "targets": {
-    "prod": {
-      "workspace": {
-        "host": "https://example.cloud.databricks.com",
-        "root_path": "/Workspace/Users/alice@example.com/.bundle/bad_bundle/prod"
-      },
-      "run_as": {
-        "user_name": "bob@example.com"
-      },
-      "permissions": [
-        {"group_name": "Users", "level": "IS_OWNER"}
-      ]
-    }
+  "workspace": {
+    "host": "https://example.cloud.databricks.com",
+    "root_path": "/Workspace/Users/alice@example.com/.bundle/bad_bundle/prod"
+  },
+  "run_as": {
+    "user_name": "bob@example.com"
   },
   "permissions": [
-    {"user_name": "shared@example.com", "level": "CAN_VIEW"}
+    {"user_name": "shared@example.com", "level": "CAN_VIEW"},
+    {"group_name": "Users", "level": "IS_OWNER"}
   ],
   "sync": {
     "exclude": [".git"]
