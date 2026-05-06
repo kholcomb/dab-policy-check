@@ -14,6 +14,14 @@ REPORTER="$(cd ../scripts && pwd)/conftest_report.py"
 TMPDIR="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
+# bad.json ships with placeholders for credential-shaped test patterns so the
+# repo doesn't trip GitHub push protection. Substitute the real patterns into
+# a tmp copy at runtime so the reporter's P12 rule still fires.
+sed -e 's/PLACEHOLDER_DAPI_TOKEN/dapi0123456789abcdef0123456789abcdef/' \
+    -e 's/PLACEHOLDER_AKIA_KEY/AKIAIOSFODNN7EXAMPLE/' \
+    bad.json > "$TMPDIR/bad.json"
+BAD="$TMPDIR/bad.json"
+
 # UTC dates to match reporter's pipeline_today().
 TODAY=$(python3 -c "from datetime import datetime, timezone; print(datetime.now(timezone.utc).date().isoformat())")
 PLUS_30=$(python3 -c "from datetime import datetime, timezone, timedelta; print((datetime.now(timezone.utc).date() + timedelta(days=30)).isoformat())")
@@ -56,7 +64,7 @@ assert_eq 0 "$exit_code" "T1 exit code"
 
 # ---------- T2: bad.json, no exceptions ----------
 echo "== T2: bad.json, no exceptions"
-exit_code=$(run_reporter --bundle bad.json --fail-on high)
+exit_code=$(run_reporter --bundle "$BAD" --fail-on high)
 assert_eq 1 "$exit_code" "T2 exit code"
 assert_ge "$(count active)" 25 "T2 active count"
 assert_eq 0 "$(count waived)" "T2 waived count"
@@ -71,7 +79,7 @@ cat > "$TMPDIR/active.yaml" <<EOF
   expires: "$PLUS_30"
 EOF
 echo "== T3: bad.json + active waiver (P11 PyPI x2)"
-exit_code=$(run_reporter --bundle bad.json --exceptions "$TMPDIR/active.yaml" --fail-on high)
+exit_code=$(run_reporter --bundle "$BAD" --exceptions "$TMPDIR/active.yaml" --fail-on high)
 assert_eq 1 "$exit_code" "T3 exit code (other Highs/Criticals remain)"
 assert_eq 2 "$(count waived)" "T3 waived count"
 
@@ -85,7 +93,7 @@ cat > "$TMPDIR/expired.yaml" <<EOF
   expires: "$MINUS_30"
 EOF
 echo "== T4: bad.json + expired waiver (must be promoted to active)"
-exit_code=$(run_reporter --bundle bad.json --exceptions "$TMPDIR/expired.yaml" --fail-on high)
+exit_code=$(run_reporter --bundle "$BAD" --exceptions "$TMPDIR/expired.yaml" --fail-on high)
 assert_eq 1 "$exit_code" "T4 exit code"
 assert_eq 0 "$(count waived)" "T4 waived count (expired -> active)"
 assert_eq 2 "$(count_marker EXPIRED-WAIVER)" "T4 EXPIRED-WAIVER markers"
@@ -100,7 +108,7 @@ cat > "$TMPDIR/unused.yaml" <<EOF
   expires: "$PLUS_30"
 EOF
 echo "== T5: bad.json + unused waiver + --strict-waivers"
-exit_code=$(run_reporter --bundle bad.json --exceptions "$TMPDIR/unused.yaml" --strict-waivers --fail-on none)
+exit_code=$(run_reporter --bundle "$BAD" --exceptions "$TMPDIR/unused.yaml" --strict-waivers --fail-on none)
 assert_eq 1 "$exit_code" "T5 exit code (--strict-waivers)"
 assert_eq 1 "$(count unused_exceptions)" "T5 unused count"
 
@@ -114,7 +122,7 @@ cat > "$TMPDIR/critical.yaml" <<EOF
   expires: "$PLUS_30"
 EOF
 echo "== T6: bad.json + Critical waiver + --no-waive-critical"
-exit_code=$(run_reporter --bundle bad.json --exceptions "$TMPDIR/critical.yaml" --no-waive-critical --fail-on high)
+exit_code=$(run_reporter --bundle "$BAD" --exceptions "$TMPDIR/critical.yaml" --no-waive-critical --fail-on high)
 assert_eq 1 "$exit_code" "T6 exit code"
 rejected=$(count_marker WAIVER-REJECTED)
 assert_ge "$rejected" 1 "T6 WAIVER-REJECTED markers"
@@ -122,7 +130,7 @@ assert_ge "$rejected" 1 "T6 WAIVER-REJECTED markers"
 # ---------- T7: JUnit emitter shape ----------
 echo "== T7: JUnit emitter (failures + skipped)"
 python3 "$REPORTER" --policy "$POLICY_DIR" --catalog "$CATALOG" \
-  --bundle bad.json --exceptions "$TMPDIR/active.yaml" \
+  --bundle "$BAD" --exceptions "$TMPDIR/active.yaml" \
   --junit "$TMPDIR/r.xml" --fail-on none >/dev/null
 failures=$(grep -c '<failure ' "$TMPDIR/r.xml")
 skipped=$(grep -c '<skipped ' "$TMPDIR/r.xml")
@@ -132,7 +140,7 @@ assert_eq 2 "$skipped" "T7 <skipped> count"
 # ---------- T8: SARIF suppressions on waived ----------
 echo "== T8: SARIF suppressions on waived findings"
 python3 "$REPORTER" --policy "$POLICY_DIR" --catalog "$CATALOG" \
-  --bundle bad.json --exceptions "$TMPDIR/active.yaml" \
+  --bundle "$BAD" --exceptions "$TMPDIR/active.yaml" \
   --sarif "$TMPDIR/r.sarif" --fail-on none >/dev/null
 suppressed=$(python3 -c "import json; d=json.load(open('$TMPDIR/r.sarif')); print(sum(1 for r in d['runs'][0]['results'] if 'suppressions' in r))")
 assert_eq 2 "$suppressed" "T8 SARIF suppressed count"
@@ -140,7 +148,7 @@ assert_eq 2 "$suppressed" "T8 SARIF suppressed count"
 # ---------- T9: Markdown 'Waived' section ----------
 echo "== T9: Markdown 'Waived' section present"
 python3 "$REPORTER" --policy "$POLICY_DIR" --catalog "$CATALOG" \
-  --bundle bad.json --exceptions "$TMPDIR/active.yaml" \
+  --bundle "$BAD" --exceptions "$TMPDIR/active.yaml" \
   --markdown "$TMPDIR/r.md" --fail-on none >/dev/null
 grep -q '## Waived' "$TMPDIR/r.md" || { echo "FAIL: T9 missing Waived section" >&2; exit 1; }
 

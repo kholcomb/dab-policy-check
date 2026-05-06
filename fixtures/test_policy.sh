@@ -12,6 +12,15 @@ POLICY_DIR="$(cd ../policy && pwd)"
 
 EXPECTED_RULES=(P2 P3 P4 P5 P6 P7 P8 P9 P10 P11 P12 P13 P15 P16)
 
+# bad.json ships with placeholders for credential-shaped test patterns so the
+# repo doesn't trip GitHub push protection. Substitute the real patterns into
+# a tmp copy at runtime so conftest's P12 rule still fires.
+TMPDIR="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR"' EXIT
+sed -e 's/PLACEHOLDER_DAPI_TOKEN/dapi0123456789abcdef0123456789abcdef/' \
+    -e 's/PLACEHOLDER_AKIA_KEY/AKIAIOSFODNN7EXAMPLE/' \
+    bad.json > "$TMPDIR/bad.json"
+
 # ---------- good.json ----------
 echo "==> good.json (expect 0 denies)"
 GOOD_OUTPUT=$(conftest test --policy "$POLICY_DIR" --all-namespaces good.json 2>&1)
@@ -26,7 +35,7 @@ echo
 
 # ---------- bad.json ----------
 echo "==> bad.json (expect every P-rule to fire)"
-BAD_OUTPUT=$(conftest test --policy "$POLICY_DIR" --all-namespaces bad.json 2>&1 || true)
+BAD_OUTPUT=$(conftest test --policy "$POLICY_DIR" --all-namespaces "$TMPDIR/bad.json" 2>&1 || true)
 echo "$BAD_OUTPUT"
 echo
 
