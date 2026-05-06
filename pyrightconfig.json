@@ -1,0 +1,19 @@
+{
+  "include": ["scripts", "policy"],
+  "exclude": ["**/__pycache__", "**/.*"],
+  "pythonVersion": "3.11",
+
+  "typeCheckingMode": "basic",
+
+  "reportMissingImports": "warning",
+  "reportMissingModuleSource": "none",
+
+  "reportUnknownArgumentType": "none",
+  "reportUnknownVariableType": "none",
+  "reportUnknownMemberType": "none",
+  "reportUnknownParameterType": "none",
+  "reportUnknownLambdaType": "none",
+  "reportMissingTypeArgument": "none",
+  "reportMissingParameterType": "none",
+  "reportUnnecessaryIsInstance": "none"
+}

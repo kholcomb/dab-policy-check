@@ -20,7 +20,6 @@ Exit codes:
 """
 
 import argparse
-import fnmatch
 import json
 import os
 import re

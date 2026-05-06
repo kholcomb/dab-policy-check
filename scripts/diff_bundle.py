@@ -8,11 +8,12 @@ pre-deploy-checks.md.
 """
 import json
 import sys
+from typing import Any
 
 
-def normalize(bundle):
+def normalize(bundle: dict[str, Any]) -> dict[str, Any]:
     """Return {resource_type: {resource_key: {permissions, run_as, name}}}."""
-    out = {}
+    out: dict[str, Any] = {}
     resources = bundle.get("resources", {})
     for rtype, items in resources.items():
         if not isinstance(items, dict):
@@ -31,9 +32,9 @@ def normalize(bundle):
     return out
 
 
-def diff(resolved, deployed):
+def diff(resolved: dict[str, Any], deployed: dict[str, Any]) -> list[tuple[str, str]]:
     """Return list of (sigil, label) tuples for added/removed/changed entries."""
-    lines = []
+    lines: list[tuple[str, str]] = []
     rtypes = set(resolved) | set(deployed)
     for rtype in sorted(rtypes):
         r_keys = set(resolved.get(rtype, {}))
@@ -54,7 +55,7 @@ def diff(resolved, deployed):
     return lines
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
     if len(argv) != 3:
         print("usage: diff_bundle.py <resolved.json> <deployed.json>", file=sys.stderr)
         return 2

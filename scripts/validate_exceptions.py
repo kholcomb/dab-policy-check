@@ -252,7 +252,8 @@ def post_slack(webhook: str, payload: dict) -> None:
 def cmd_notify(args: argparse.Namespace) -> int:
     today = pipeline_today()
     exceptions = load_exceptions(args.path)
-    tiers = [int(x.strip()) for x in args.warn_days.split(",") if x.strip()]
+    warn_days_str = args.warn_days or ""
+    tiers = [int(x.strip()) for x in warn_days_str.split(",") if x.strip()]
     if not tiers:
         sys.stderr.write("ERROR: --warn-days produced no tiers.\n")
         return 2

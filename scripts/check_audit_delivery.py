@@ -17,13 +17,13 @@ from databricks.sdk.service.sql import StatementState
 FRESHNESS_HOURS = 24
 
 
-def parse_args(argv):
+def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument("--target", required=True, help="bundle target name")
     return p.parse_args(argv)
 
 
-def parse_event_time(raw):
+def parse_event_time(raw: str) -> datetime:
     """Parse a Databricks SQL timestamp string into an aware UTC datetime."""
     s = raw.replace("Z", "+00:00")
     dt = datetime.fromisoformat(s)
@@ -32,7 +32,7 @@ def parse_event_time(raw):
     return dt
 
 
-def main(argv):
+def main(argv: list[str]) -> int:
     args = parse_args(argv)
     warehouse_id = os.environ.get("DATABRICKS_WAREHOUSE_ID")
     if not warehouse_id:
