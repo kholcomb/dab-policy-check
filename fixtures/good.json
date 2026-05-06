@@ -1,0 +1,133 @@
+{
+  "bundle": {
+    "name": "secure_bundle",
+    "databricks_cli_version": ">= 0.218.0",
+    "git": {
+      "branch": "main"
+    }
+  },
+  "targets": {
+    "prod": {
+      "mode": "production",
+      "workspace": {
+        "host": "https://my-workspace.cloud.databricks.com",
+        "root_path": "/Workspace/Shared/.bundle/secure_bundle/prod"
+      },
+      "run_as": {
+        "service_principal_name": "11111111-2222-3333-4444-555555555555"
+      },
+      "git": {
+        "branch": "main"
+      },
+      "permissions": [
+        {"group_name": "data-engineering", "level": "CAN_VIEW"}
+      ]
+    }
+  },
+  "permissions": [
+    {"group_name": "platform-admins", "level": "CAN_MANAGE"}
+  ],
+  "sync": {
+    "exclude": [
+      ".env",
+      "*.pem",
+      "*.key",
+      "*.pfx",
+      "variable-overrides.json"
+    ]
+  },
+  "variables": {
+    "prod_sp": {
+      "description": "Service principal for prod run_as",
+      "default": "11111111-2222-3333-4444-555555555555"
+    },
+    "catalog": {
+      "description": "Unity Catalog target",
+      "default": "main"
+    }
+  },
+  "resources": {
+    "jobs": {
+      "daily_etl": {
+        "name": "daily_etl_prod",
+        "permissions": [
+          {"service_principal_name": "11111111-2222-3333-4444-555555555555", "level": "IS_OWNER"},
+          {"group_name": "data-engineering-leads", "level": "CAN_MANAGE"}
+        ],
+        "job_clusters": [
+          {
+            "job_cluster_key": "main",
+            "new_cluster": {
+              "spark_version": "15.4.x-scala2.12",
+              "node_type_id": "i3.xlarge",
+              "num_workers": 2,
+              "data_security_mode": "USER_ISOLATION",
+              "init_scripts": [
+                {"volumes": {"destination": "/Volumes/main/ops/init/harden.sh"}}
+              ]
+            }
+          }
+        ],
+        "tasks": [
+          {
+            "task_key": "extract",
+            "job_cluster_key": "main",
+            "notebook_task": {"notebook_path": "../src/extract.py"},
+            "libraries": [
+              {"pypi": {"package": "requests==2.32.3"}},
+              {"maven": {"coordinates": "org.apache.commons:commons-lang3:3.14.0"}}
+            ]
+          }
+        ]
+      }
+    },
+    "pipelines": {
+      "curated_pipeline": {
+        "name": "curated_pipeline_prod",
+        "catalog": "main",
+        "target": "curated",
+        "permissions": [
+          {"service_principal_name": "11111111-2222-3333-4444-555555555555", "level": "IS_OWNER"},
+          {"group_name": "data-engineering-leads", "level": "CAN_MANAGE"}
+        ],
+        "clusters": [
+          {
+            "label": "default",
+            "num_workers": 2,
+            "data_security_mode": "USER_ISOLATION",
+            "init_scripts": [
+              {"workspace": {"destination": "/Workspace/Shared/.bundle/secure_bundle/init/harden.sh"}}
+            ]
+          }
+        ]
+      }
+    },
+    "model_serving_endpoints": {
+      "fraud_scorer": {
+        "name": "fraud_scorer_prod",
+        "rate_limits": [
+          {"calls": 60, "renewal_period": "minute"}
+        ],
+        "ai_gateway": {
+          "usage_tracking_config": {"enabled": true},
+          "guardrails": {
+            "input": {"safety": true, "pii": {"behavior": "BLOCK"}},
+            "output": {"safety": true}
+          }
+        }
+      }
+    },
+    "clusters": {
+      "shared_analytics": {
+        "cluster_name": "shared_analytics_prod",
+        "spark_version": "15.4.x-scala2.12",
+        "node_type_id": "i3.xlarge",
+        "num_workers": 2,
+        "data_security_mode": "USER_ISOLATION",
+        "init_scripts": [
+          {"workspace": {"destination": "/Workspace/Shared/.bundle/secure_bundle/init/harden.sh"}}
+        ]
+      }
+    }
+  }
+}

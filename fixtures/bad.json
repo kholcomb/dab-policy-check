@@ -1,0 +1,91 @@
+{
+  "bundle": {
+    "name": "bad_bundle"
+  },
+  "targets": {
+    "prod": {
+      "workspace": {
+        "host": "https://example.cloud.databricks.com",
+        "root_path": "/Workspace/Users/alice@example.com/.bundle/bad_bundle/prod"
+      },
+      "run_as": {
+        "user_name": "bob@example.com"
+      },
+      "permissions": [
+        {"group_name": "Users", "level": "IS_OWNER"}
+      ]
+    }
+  },
+  "permissions": [
+    {"user_name": "shared@example.com", "level": "CAN_VIEW"}
+  ],
+  "sync": {
+    "exclude": [".git"]
+  },
+  "variables": {
+    "leaked_pat": {
+      "description": "hardcoded PAT — should fire P12",
+      "default": "PLACEHOLDER_DAPI_TOKEN"
+    },
+    "leaked_aws": {
+      "description": "hardcoded AWS key — should fire P12",
+      "default": "PLACEHOLDER_AKIA_KEY"
+    },
+    "leaked_url": {
+      "description": "URL with token= — should fire P12",
+      "default": "https://example.com?token=secret"
+    }
+  },
+  "resources": {
+    "jobs": {
+      "bad_job": {
+        "name": "bad_job",
+        "permissions": [
+          {"user_name": "shared@example.com", "level": "CAN_VIEW"}
+        ],
+        "job_clusters": [
+          {
+            "job_cluster_key": "main",
+            "new_cluster": {
+              "spark_version": "15.4.x-scala2.12",
+              "node_type_id": "i3.xlarge",
+              "num_workers": 2,
+              "data_security_mode": "NONE",
+              "init_scripts": [
+                {"dbfs": {"destination": "dbfs:/init/old.sh"}},
+                {"s3": {"destination": "s3://bucket/init.sh", "region": "us-east-1"}}
+              ]
+            }
+          }
+        ],
+        "tasks": [
+          {
+            "task_key": "load",
+            "libraries": [
+              {"pypi": {"package": "requests"}},
+              {"pypi": {"package": "numpy==2.*"}},
+              {"maven": {"coordinates": "com.example:lib"}},
+              {"maven": {"coordinates": "com.example:lib:[1.0,2.0)"}}
+            ]
+          }
+        ]
+      }
+    },
+    "pipelines": {
+      "bad_pipe": {
+        "name": "bad_pipe",
+        "permissions": []
+      }
+    },
+    "model_serving_endpoints": {
+      "bad_endpoint": {
+        "name": "bad_endpoint",
+        "permissions": [
+          {"group_name": "Users", "level": "CAN_MANAGE"}
+        ],
+        "rate_limits": [],
+        "ai_gateway": {}
+      }
+    }
+  }
+}
